@@ -1,0 +1,190 @@
+Create or replace table `budgets.budgets_table` as 
+
+--- We are using CTE, that is temporary tables formulated which will help derive our final set of results 
+With googleactualsrun as 
+(SELECT Date, spend, sum(spend) over (partition by Account,EXTRACT(month FROM Date) order by Date asc) Google_Ads_Spend_to_Date, EXTRACT(month FROM Date) month, EXTRACT(isoweek FROM Date) week, EXTRACT(year FROM Date) year, Extract(day from LAST_DAY(DATE, MONTH)) daysinmonth
+ FROM `budgets.google_account_spend` ),
+ 
+---- From google actuals we generated date variables based on month, year, isoweek etc. Also created a variables to get numbers of days in a month from date. Also generated the cummulative spend by month
+
+ channelbudgetting1 as (
+   SELECT *, sum(budget) over (partition by Date order by Date asc) monthlybudget 
+   FROM `budgets.google_campaign_budgets`
+ ),
+ channelbudgetting as  
+ (
+SELECT distinct actuals.Date,campaignbudget.Program, actuals.spend, actuals.Google_Ads_Spend_to_Date,campaignbudget.budget,campaignbudget.monthlybudget,actuals.daysinmonth, 
+ FROM googleactualsrun actuals
+  JOIN channelbudgetting1 as campaignbudget
+ON EXTRACT(year FROM actuals.Date) = EXTRACT(YEAR FROM campaignbudget.Date ) and 
+ EXTRACT(month FROM actuals.Date) = EXTRACT(month FROM campaignbudget.Date )
+ 
+ ) 
+ ----- channelbudgeting(1), these are aliases used to get the monthhly budget based the various campaign budgetary figures.
+ ----- channelbudgeting, we join our google actuals with campaign budget table based on date and highlight required fields and new ones generated.
+
+,
+
+ channelsafety as (
+   select *, avg(budget/daysinmonth) over (partition by Program,EXTRACT(month FROM Date) order by Date asc) dailyc_budget,
+   avg(monthlybudget/daysinmonth) over (partition by Program,EXTRACT(month FROM Date) order by Date asc) dailybudget
+   from channelbudgetting
+ ),
+--- channelsafety, we generate daily budget based on campaign budget and monthly budget 
+
+channelsafetyfinal as (
+   select *, round(sum(dailybudget) over (partition by Program,EXTRACT(month FROM Date) order by Date asc)) runningbudget, 
+Program program_c,
+  round(sum(dailyc_budget) over (partition by Program,EXTRACT(month FROM Date) order by Date asc)) runningc_budget
+   from channelsafety
+ )
+ --- channelsafetyfinal, we calculate cummulative of daily budget at campaign and whole 
+
+,  campaignspend as (
+SELECT *, split(campaign, ' |')[offset(0)] as program
+FROM
+`budgets.google_campaign_spend`
+)
+-- From google campaign sheet, we extract the campaign names and generate a new field called program
+
+,
+campaignspenda as
+(select *, round(sum( spend) over (partition by program,EXTRACT(month FROM Date) order by Date asc)) adspend_act, round(sum( spend) over (partition by program,EXTRACT(month FROM Date), EXTRACT(day FROM Date) order by Date asc) ) adspend_actdaily
+from campaignspend) 
+--- generate cummulative campaign spend
+
+,
+campaignspent1 as ( 
+  select distinct adspend_actdaily,adspend_act, Date, program, 
+  program as program_cc
+  from campaignspenda
+)
+
+,
+googleadsbudget1 as(
+  select channelsafetyfinal.spend,channelsafetyfinal.Google_Ads_Spend_to_Date,channelsafetyfinal.budget,channelsafetyfinal.dailybudget,channelsafetyfinal.dailyc_budget, channelsafetyfinal.Date,channelsafetyfinal.program_c as program,  channelsafetyfinal.monthlybudget,channelsafetyfinal.runningbudget,
+  channelsafetyfinal.runningc_budget,
+  from channelsafetyfinal
+  join campaignspent1 as campaignspent 
+  on  channelsafetyfinal.program_c  =  campaignspent.program_cc
+)
+,
+dateincl as(
+select distinct Date, program
+from googleadsbudget1 
+order by Date)
+,
+campaignspent as(
+select  d.Date,
+d.program,
+c.adspend_actdaily,
+c.adspend_act
+from dateincl d
+left join campaignspent1  c
+on  c.Date = d.Date and 
+d.program = c.program
+order by d.Date),
+
+--- line 56-85, we are controlling for missing dates based on campaign. The we treat for repeated values by selecting distinct date values.
+
+googleadsbudget as(
+  select channelsafetyfinal.spend,channelsafetyfinal.Google_Ads_Spend_to_Date,channelsafetyfinal.budget,channelsafetyfinal.dailybudget,channelsafetyfinal.dailyc_budget, campaignspent.adspend_actdaily, campaignspent.Date, channelsafetyfinal.program_c as program,  channelsafetyfinal.monthlybudget,channelsafetyfinal.runningbudget,
+  channelsafetyfinal.runningc_budget,
+  from channelsafetyfinal
+  join campaignspent
+  on channelsafetyfinal.program_c = campaignspent.program
+  and channelsafetyfinal.Date = campaignspent.Date
+),
+
+--- googleadsbudget, joins our google_campaign_spend with corrected missing dates with campaign budgets table
+googlebudgetfinal10 as (select *, 
+case when adspend_actdaily is null then 0
+else adspend_actdaily
+end adsspend_daily,
+
+from googleadsbudget
+order by Date)
+,
+googleadsbudget12 as
+(select *, round(sum( adsspend_daily) over (partition by program,EXTRACT(month FROM Date) order by Date asc)) adspend_act
+from googlebudgetfinal10 
+)
+
+,
+
+ googlebudgetfinal1 as(
+ Select *, round(sum( dailyc_budget) over (partition by program,EXTRACT(month FROM Date) order by Date asc) )ads_target_spent_to_date,
+ round(dailybudget) adspendtarget_daily,
+
+ round(sum( adspend_actdaily) over (partition by EXTRACT(day FROM Date) order by Date asc)) adspend_actuals
+ From googleadsbudget12)
+,
+ googlebudgetfinal as (
+ select *, round(sum(adspend_actuals) over (partition by program,EXTRACT(month FROM Date) order by Date asc))adspendtargetfinal,
+ (date_diff( LAST_DAY(DATE, MONTH) +1,Date,day)) dayleftinmonth, Extract (day from LAST_DAY(DATE, MONTH)) as daysinmonth, lag(Google_Ads_Spend_to_Date) over (partition by EXTRACT(month FROM Date), program order by Date )  as lagactuals,
+ lag(adspend_act) over (partition by program,EXTRACT(month FROM Date) order by Date ) as lagadspend_act
+ 
+ from googlebudgetfinal1)
+
+,
+googlebudgetfinal2 as (
+  select *, 
+   case when lagactuals is null then monthlybudget 
+   when daysinmonth > dayleftinmonth then (monthlybudget - lagactuals ) 
+   end as remainingbudgetwhole,
+
+  case when lagadspend_act is null then budget
+  when daysinmonth <> dayleftinmonth then (budget-lagadspend_act)
+  end as remainingbudgetcampaign, 
+     from googlebudgetfinal
+     order by program, Date
+)
+,
+googlebudgetfinal3 as (
+select *,
+ case when Date > Current_Date then round((remainingbudgetwhole/( daysinmonth - Extract(day from Current_Date) ))) 
+ else round((monthlybudget/daysinmonth))
+ end as budgetwhole 
+, 
+case when Date > Current_Date then (remainingbudgetcampaign/( daysinmonth - Extract(day from Current_Date) ) )
+else (budget/daysinmonth)
+end as budgetcampaign
+ 
+from googlebudgetfinal2),
+
+-- line 131-154, we generate "Target Daily Ad Spend" based on campaign ie "budgetcampign" and whole budget "budgetwhole"
+
+googlebudgetfinal4 as (
+ 
+ select *, round(sum( budgetcampaign) over (partition by program,EXTRACT(month FROM Date) order by Date asc)) spenttodate_campaign,
+ round(sum( budgetwhole) over (partition by EXTRACT(month FROM Date) order by Date asc)) spenttodate_target_whole, 
+ round((budget/monthlybudget),3) as percentbudget, 
+ from googlebudgetfinal3
+)
+
+----googlebudgetfinal4 generates all our required fields after joining our 3 tables and applying the various logics in your existing sheets
+
+, 
+googlesheetstable as
+(select *, 
+case  when  Date <= Current_date   then adspend_act
+when  adsspend_daily = 0  then null
+  else adspend_act
+  end as adspend_act2 , 
+
+case  when  Date <= Current_date   then Google_Ads_Spend_to_Date
+when  spend = 0  then null
+  else Google_Ads_Spend_to_Date
+  end as Google_Ads_Spend_to_Date2  
+
+from googlebudgetfinal4)
+
+select  Date, program, budget as CampaignBudget, 
+monthlybudget, percentbudget as Campaign_percentage_monthly_budget, 
+round(spend) as Google_Ads_Daily_Ad_Spend, 
+runningbudget as Google_Ads_Spend_to_Date,ROUND(Google_Ads_Spend_to_Date2) as Google_Actual_USD, budgetwhole as Target_Daily_Ad_Spend, budgetcampaign as Ads_target_daily_spend, ads_target_spent_to_date, 
+adspend_act2 as Actuals_campaign
+from googlesheetstable
+
+
+--- line 169-180 simply generates the field from our final CTE table googlebudgetfinal4
