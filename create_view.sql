@@ -1,3 +1,11 @@
+/*
+Dave Walker
+05-02-2023
+bigquery-budget-tracker/create_view.sql
+Version 1
+Google Standard SQL
+*/
+
 SELECT  dsbp.spend_date
 ,       dsbp.program
 ,       dsbp.spend
