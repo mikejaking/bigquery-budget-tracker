@@ -1,7 +1,7 @@
 /*
 Dave Walker
 05-02-2023
-bigquery-budget-tracker/budgets_vs_actual
+bigquery-budget-tracker/budgets_vs_actual.sql
 Version 1
 Google Standard SQL
 */
