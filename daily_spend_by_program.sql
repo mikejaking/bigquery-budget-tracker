@@ -1,3 +1,12 @@
+/*
+Dave Walker
+05-02-2023
+bigquery-budget-tracker/daily_budgets.sql
+Version 1
+Google Standard SQL
+*/
+
+
 SELECT gcs.accountid
 ,      gcs.account
 ,      gcs.currency
