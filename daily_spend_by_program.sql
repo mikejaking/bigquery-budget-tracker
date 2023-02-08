@@ -1,7 +1,7 @@
 /*
 Dave Walker
 05-02-2023
-bigquery-budget-tracker/daily_budgets.sql
+bigquery-budget-tracker/daily_spend_by_program.sql
 Version 1
 Google Standard SQL
 */
