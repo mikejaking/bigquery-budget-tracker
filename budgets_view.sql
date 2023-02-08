@@ -1,3 +1,11 @@
+/*
+Dave Walker
+05-02-2023
+bigquery-budget-tracker/budgets_view.sql
+Version 1
+Google Standard SQL
+*/
+
 select  COALESCE(spby.spend_date, db.budget_date) as date
 ,       COALESCE(spby.program, db.program) AS program
 ,       spby.spend
