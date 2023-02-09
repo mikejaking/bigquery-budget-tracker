@@ -13,12 +13,8 @@ WITH
     gcb.program,
     gcb.budget AS budget_monthly_by_program,
     gcb.budget / EXTRACT(DAY
-      FROM
-        LAST_DAY(gcb.date, MONTH)) AS budget_daily_by_program,
-    SUM(gcb.budget) OVER (PARTITION BY gcb.date ORDER BY gcb.date ASC) budget_monthly_all_programs,
-    SUM(gcb.budget) OVER (PARTITION BY gcb.date ORDER BY gcb.date ASC) / EXTRACT(DAY
-      FROM
-        LAST_DAY(gcb.date, MONTH)) budget_daily_all_programs
+    FROM
+      LAST_DAY(gcb.date, MONTH)) AS budget_daily_by_program
   FROM
     `budgets.google_campaign_budgets` gcb ),
   calendar_table AS (
@@ -38,11 +34,7 @@ SELECT
   ct.calendar_date AS budget_date,
   mb.program,
   mb.budget_daily_by_program,
-  ROUND(SUM(mb.budget_daily_by_program) OVER (PARTITION BY mb.program, mb.budget_month ORDER BY mb.program, ct.calendar_date ASC),2) budget_monthly_running_total_by_program,
   mb.budget_monthly_by_program,
-  mb.budget_daily_all_programs,
-  ROUND(SUM(mb.budget_daily_all_programs) OVER (PARTITION BY mb.program, mb.budget_month ORDER BY mb.program, ct.calendar_date ASC),2) budget_monthly_running_total_all_programs,
-  mb.budget_monthly_all_programs
 FROM
   monthly_budget AS mb
 CROSS JOIN
