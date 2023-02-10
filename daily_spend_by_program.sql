@@ -4,6 +4,8 @@ Dave Walker
 bigquery-budget-tracker/daily_spend_by_program.sql
 Version 1
 Google Standard SQL
+
+Description: This view parses the program from the underlying campaign and then the daily spend per program.
 */
 
 

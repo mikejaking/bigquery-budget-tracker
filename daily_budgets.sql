@@ -4,6 +4,9 @@ Dave Walker
 bigquery-budget-tracker/daily_budgets.sql
 Version 1
 Google Standard SQL
+
+Description: This sql distributes data from the monthly budget sheet across all days in the month. This allows us to
+join the daily spend more effectively.
 */
 
 WITH
